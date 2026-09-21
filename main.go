@@ -157,6 +157,10 @@ func handletg(ctx tele.Context) {
 
 	userid := ctx.Sender().ID
 	tgmutex.RLock()
+	_, exists := users[userid]
+	if !exists {
+		users[userid] = &user{}
+	}
 	scene := users[userid].sc
 	tgmutex.RUnlock()
 
