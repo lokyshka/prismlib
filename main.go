@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -169,30 +170,25 @@ func handletg(ctx tele.Context) {
 
 		ctx.Send(welcomemsg, selector)
 		tg.Handle(&btncl, func(ctxx tele.Context) error {
+			userid := ctxx.Sender().ID
 			users[userid].mu.Lock()
 			users[userid].sc = clselreg
 			users[userid].mu.Unlock()
 
 			log.Println("client role selected!")
-			err := ctxx.Edit(&tele.ReplyMarkup{})
-			if err != nil {
-				log.Println("не удалось убрать кнопки.")
-			}
+			ctxx.Bot().EditReplyMarkup(ctxx.Message(), nil)
 
 			handletg(ctxx)
 			return ctxx.Respond()
 		})
 		tg.Handle(&btnlib, func(ctxx tele.Context) error {
+			userid := ctxx.Sender().ID
 			users[userid].mu.Lock()
 			users[userid].sc = libselreg
 			users[userid].mu.Unlock()
 
 			log.Println("library role selected!")
-			handletg(ctxx)
-			err := ctxx.Edit(&tele.ReplyMarkup{})
-			if err != nil {
-				log.Println("не удалось убрать кнопки.")
-			}
+			ctxx.Bot().EditReplyMarkup(ctxx.Message(), nil)
 
 			handletg(ctxx)
 			return ctxx.Respond()
@@ -206,7 +202,7 @@ func handletg(ctx tele.Context) {
 
 	case clselcity:
 		var flag bool
-		region := ctx.Message().Text
+		region := strings.ToLower(ctx.Message().Text)
 
 		for _, item := range regions {
 			if item == region {
@@ -226,6 +222,8 @@ func handletg(ctx tele.Context) {
 		users[userid].sc = clsellib
 
 	case clsellib:
+		// city := strings.ToLower(ctx.Message().Text)
+
 		// привязываем человека к городу
 
 		ctx.Send("Выберите библиотеку. Нету в списке? Возможно, библиотека не зарегистрирована в боте или вы неверно указали город.")
