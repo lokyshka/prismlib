@@ -147,7 +147,7 @@ const libseladress int8 = -4
 func handletg(ctx tele.Context) {
 	const welcomemsg string = "Привет! Я — бот, который поможет забронировать книгу в выбранной библиотеке! Выберите роль, чтобы продолжить:"
 
-	log.Println("new handletg!q")
+	log.Println("new handletg!")
 	userid := ctx.Sender().ID
 	_, exists := users[userid]
 	if !exists {
@@ -168,22 +168,41 @@ func handletg(ctx tele.Context) {
 		)
 
 		ctx.Send(welcomemsg, selector)
-		tg.Handle(&btncl, func(c tele.Context) error {
+		tg.Handle(&btncl, func(ctxx tele.Context) error {
+			users[userid].mu.Lock()
 			users[userid].sc = clselreg
+			users[userid].mu.Unlock()
+
 			log.Println("client role selected!")
-			handletg(ctx)
-			return nil
+			err := ctxx.Edit(&tele.ReplyMarkup{})
+			if err != nil {
+				log.Println("не удалось убрать кнопки.")
+			}
+
+			handletg(ctxx)
+			return ctxx.Respond()
 		})
-		tg.Handle(&btnlib, func(c tele.Context) error {
+		tg.Handle(&btnlib, func(ctxx tele.Context) error {
+			users[userid].mu.Lock()
 			users[userid].sc = libselreg
+			users[userid].mu.Unlock()
+
 			log.Println("library role selected!")
-			handletg(ctx)
-			return nil
+			handletg(ctxx)
+			err := ctxx.Edit(&tele.ReplyMarkup{})
+			if err != nil {
+				log.Println("не удалось убрать кнопки.")
+			}
+
+			handletg(ctxx)
+			return ctxx.Respond()
 		})
 
 	case clselreg:
 		ctx.Send("Введите название региона. Пример: \"Республика Татарстан\", \"Москва\".")
+		users[userid].mu.Lock()
 		users[userid].sc = clselcity
+		users[userid].mu.Unlock()
 
 	case clselcity:
 		var flag bool
@@ -291,6 +310,7 @@ func main() {
 		return nil
 	})
 	tg.Handle(tele.OnText, func(ctx tele.Context) error {
+		handletg(ctx)
 		return nil
 	})
 
