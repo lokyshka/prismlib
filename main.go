@@ -1,25 +1,18 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/max-messenger/maxbot"
+	"golang.org/x/net/proxy"
 	tele "gopkg.in/telebot.v4"
 )
-
-/*
-func tgtest(tg tele.Context) error {
-	return tg.Send("ping-pong!")
-}
-
-func maxtest(ctx maxbot.Context) error {
-	return ctx.Reply("ping-pong!")
-}
-*/
 
 var regions = [...]string{
 	// республики
@@ -132,7 +125,6 @@ type user struct {
 }
 
 var users = make(map[int64]*user)
-var tgmutex sync.RWMutex
 var tg *tele.Bot
 
 const selrole int8 = 0
@@ -155,14 +147,15 @@ const libseladress int8 = -4
 func handletg(ctx tele.Context) {
 	const welcomemsg string = "Привет! Я — бот, который поможет забронировать книгу в выбранной библиотеке! Выберите роль, чтобы продолжить:"
 
+	log.Println("new handletg!q")
 	userid := ctx.Sender().ID
-	tgmutex.RLock()
 	_, exists := users[userid]
 	if !exists {
 		users[userid] = &user{}
 	}
+	users[userid].mu.Lock()
 	scene := users[userid].sc
-	tgmutex.RUnlock()
+	users[userid].mu.Unlock()
 
 	switch scene {
 	case selrole:
@@ -177,11 +170,13 @@ func handletg(ctx tele.Context) {
 		ctx.Send(welcomemsg, selector)
 		tg.Handle(&btncl, func(c tele.Context) error {
 			users[userid].sc = clselreg
+			log.Println("client role selected!")
 			handletg(ctx)
 			return nil
 		})
-		tg.Handle(&btncl, func(c tele.Context) error {
+		tg.Handle(&btnlib, func(c tele.Context) error {
 			users[userid].sc = libselreg
+			log.Println("library role selected!")
 			handletg(ctx)
 			return nil
 		})
@@ -219,9 +214,11 @@ func handletg(ctx tele.Context) {
 
 }
 
+/*
 func handlemax(ctx maxbot.Context) {
 
 }
+*/
 
 func main() {
 	// загрузка токенов
@@ -240,10 +237,28 @@ func main() {
 		log.Fatal("токен max пуст!")
 	}
 
+	// создаем клиент для перенаправления трафика telegram в прокси
+	dialer, err := proxy.SOCKS5("tcp", "127.0.0.1:1080", nil, proxy.Direct)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	transp := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.Dial(network, addr)
+		},
+	}
+
+	httpсl := &http.Client{
+		Transport: transp,
+		Timeout:   10 * time.Second,
+	}
+
 	// запускаем бота telegram
 	pref := tele.Settings{
 		Token:  tgtoken,
 		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
+		Client: httpсl,
 	}
 
 	tg, err = tele.NewBot(pref)
@@ -260,16 +275,25 @@ func main() {
 		}
 	*/
 
+	// обрабатываем команды и прочие сообщения
 	tg.Handle("/start", func(ctx tele.Context) error {
 		userid := ctx.Sender().ID
-		tgmutex.Lock()
+		_, exists := users[userid]
+		if !exists {
+			users[userid] = &user{}
+		}
+		users[userid].mu.Lock()
 		users[userid].sc = selrole
-		tgmutex.Unlock()
+		users[userid].mu.Unlock()
 		log.Println("new /start")
 
 		handletg(ctx)
 		return nil
 	})
+	tg.Handle(tele.OnText, func(ctx tele.Context) error {
+		return nil
+	})
+
 	/*
 		max.Handle("/start", func(ctx maxbot.Context) error {
 			return nil
